@@ -13,9 +13,6 @@ else
     cmd=$2
 fi
 
-# In case restic was installed there.
-export PATH="${HOME}/.local/bin:${PATH}"
-
 config="${HOME}/.config/restly"
 
 # For configure-root, this may not exist yet.
