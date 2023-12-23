@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+set -x
+
+bash -n $(command -v "$0")
+
+if [ -e /sys/class/power_supply/AC/online ]
+then
+    # Don't run on battery power.
+    test "$(cat /sys/class/power_supply/AC/online)" -eq 1 || exit 0
+fi
+
+if nmcli -t -f GENERAL.DEVICE,GENERAL.METERED dev show "$(ip route list 0/0 | sed -r 's/.*dev (\S*).*/\1/g')" | grep yes
+then
+    echo "Refusing to run while on metered connection, unset flag in Gnome Settings > Wi-Fi > Connected Network > Details to continue." 1>&2
+    exit 0
+fi
+
+export HOME=/home/$USER
+export PATH="${HOME}/.local/bin:${PATH}"
+export DISPLAY=:0
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $USER)/bus
+export SSH_AUTH_SOCK=/run/user/$(id -u $USER)/keyring/ssh
+
+if [ "$2" = backup ]
+then
+    nice ionice restly $@
+else
+    gnome-session-inhibit --inhibit suspend nice ionice restly $@
+fi
