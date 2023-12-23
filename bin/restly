@@ -1,11 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Documentation
-#
-# restly: simple restic backups
-#
-
+# Check the syntax.
 bash -n $(command -v "$0")
 
 if [ "$#" -eq 1 ]
