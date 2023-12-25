@@ -106,9 +106,6 @@ It will first check there does not exist such a config yet and then create the c
 You can skip the checks by setting RESTLY_FORCE=1 which may cause files and repo passwords to be lost.
 "
 
-        crontab="$(mktemp)"
-        crontab -l > "$crontab"
-
         dir_name=${RESTLY_CONFIGURE_DIR:-root}
         conf_dir="${config}/${dir_name}"
 
@@ -136,13 +133,6 @@ or remove the existing configuration file." 1>&2
         then
             echo "Error: ${RESTIC_PASSWORD_FILE} already exists,
 remove it or change the server name." 1>&2
-            exit 1
-        fi
-
-        if grep "# restly-id: $repo" "$crontab" && [ $RESTLY_FORCE != 1 ]
-        then
-            echo "Error: crontab already has jobs for $repo (found restly-id line),
-remove them with 'crontab -e'." 1>&2
             exit 1
         fi
 
@@ -216,7 +206,21 @@ export RESTIC_PASSWORD_FILE=\"$RESTIC_PASSWORD_FILE\"" \
 
         echo "${conf_dir} was created by '$0 $@' at $(date --iso)." > ${conf_dir}/README.txt
 
-        echo "
+        if [ "$RESTLY_CRONTAB" == "1" ]
+        then
+            # Legacy.
+
+            crontab="$(mktemp)"
+            crontab -l > "$crontab"
+
+            if grep "# restly-id: $repo" "$crontab" && [ $RESTLY_FORCE != 1 ]
+            then
+                echo "Error: crontab already has jobs for $repo (found restly-id line),
+remove them with 'crontab -e'." 1>&2
+                exit 1
+            fi
+
+            echo "
 # Automatically added $(date --iso) by '$0 $@'
 # restly-id: $repo
 USER=$USER
@@ -225,12 +229,14 @@ PATH=$PATH
 10 15 * * */2 restly-cron $repo prune
 15 */2 * * * restly-cron $repo backup" \
     >> "$crontab"
-        crontab "$crontab"
-        rm -f "$crontab"
+            crontab "$crontab"
+            rm -f "$crontab"
+        else
+            systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
+        fi
 
         echo "
-Success, backup will be run automatically by crontab.
-You can also run 'restly $repo backup' now to test it.
+Success, backup will be run automatically.
 "
 
         rm "${pid_file}"

@@ -27,10 +27,16 @@ Tested on Ubuntu 22.10 and Fedora 39.
 ## Install
 
 ``` sh
-sudo apt install stow trash-cli restic
+sudo apt install restic stow trash-cli 
+# OR 
+sudo dnf install restic stow trash-cli
+
 cd ~/.local/stow
 git clone git@github.com:luisgerhorst/restly-backup.git 
-stow --ignore=.git --ignore=LICENSE --ignore=README.md restly-backup
+stow --target=$HOME \
+  --ignore=.git --ignore=.gitignore --ignore=LICENSE --ignore=README.md \
+  restly-backup
+systemctl --user daemon-reload
 export PATH=$HOME/.local/bin:$PATH
 restly help
 ```
@@ -40,10 +46,18 @@ restly help
 Run `restly configure-root` to create a config that backs up you machine's root
 filesystem (i.e., skipping external drives and temporary / caches files). It
 will prompt you for the backup destination (the restic repo) and encryption
-password.
+password. It enables the automatic backups (using systemd timers) to the
+`default` repo.
+
+For testing, kick off an initial backup manually and check the logs:
+
+``` sh
+systemctl --user start restly-backup
+journalctl --user -u restly-backup
+```
 
 Config files:
-- `crontab -e`: Set `$USER` and `$PATH`, invokes `restly-cron`
+- systemd/crontab: Invokes `restly-cron`
 - `~/.authinfo.d/restly_$REPO_password`
 - `~/.config/restly/$REPO.conf`
   - Backup destination and encryption password

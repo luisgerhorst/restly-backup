@@ -1,0 +1,10 @@
+[Unit]
+Description=Runs restly check every week, making up for missed runs
+
+[Timer]
+OnCalendar=Thu *-*-* 00:00:00
+Persistent=true
+Unit=restly-check.service
+
+[Install]
+WantedBy=multi-user.target

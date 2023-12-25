@@ -1,0 +1,9 @@
+[Unit]
+Description=Runs restly backup one hour after last run finished
+
+[Timer]
+OnUnitInactiveSec=60min
+Unit=restly-backup.service
+
+[Install]
+WantedBy=multi-user.target

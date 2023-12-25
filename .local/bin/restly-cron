@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+set -x
+
+cmd=$2
+
+bash -n $(command -v "$0")
+
+if [ -e /sys/class/power_supply/AC/online ]
+then
+    # Don't run on battery power.
+    test "$(cat /sys/class/power_supply/AC/online)" -eq 1 || exit 0
+fi
+
+if nmcli -t -f GENERAL.DEVICE,GENERAL.METERED dev show "$(ip route list 0/0 | sed -r 's/.*dev (\S*).*/\1/g')" | grep yes
+then
+    echo "Refusing to run while on metered connection, unset flag in Gnome Settings > Wi-Fi > Connected Network > Details to continue." 1>&2
+    exit 0
+fi
+
+export HOME=/home/$USER
+export PATH="${HOME}/.local/bin:${PATH}"
+export DISPLAY=:0
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id --user)/bus
+export SSH_AUTH_SOCK=/run/user/$(id --user)/keyring/ssh
+
+cgroup="/sys/fs/cgroup/user.slice/user-$(id --user).slice/user@$(id --user).service/app.slice/restly-${cmd}.service"
+if [ -f "$cgroup/cpu.uclamp.max" ]
+then
+    # Only request 25% of a big core's CPU cycles (whole core would be 1024).
+    # This allows the kernel to move us to a little core, or to run the big core
+    # at a low cpufreq.
+    #
+    # TODO: Use CPU min MHz / CPU max MHz here to cause the CPU to run at lowest
+    # possible freq?
+    echo -n "25" > "$cgroup/cpu.uclamp.max"
+fi
+
+if [ "$cmd" = backup ]
+then
+    nice ionice restly $@
+else
+    gnome-session-inhibit --inhibit suspend \
+        nice ionice \
+        restly $@
+fi
