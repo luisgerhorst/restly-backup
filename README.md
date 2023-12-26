@@ -37,6 +37,10 @@ stow --target=$HOME \
   --ignore=.git --ignore=.gitignore --ignore=LICENSE --ignore=README.md \
   restly-backup
 systemctl --user daemon-reload
+
+# For quiet backups without kernel uclamp support:
+echo "$USER	ALL=(ALL:ALL) NOPASSWD: /usr/bin/cpupower" | sudo tee /etc/sudoers.d/$USER-cpupower-for-restly
+
 export PATH=$HOME/.local/bin:$PATH
 restly help
 ```

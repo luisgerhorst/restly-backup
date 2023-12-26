@@ -24,6 +24,8 @@ export DISPLAY=:0
 export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id --user)/bus
 export SSH_AUTH_SOCK=/run/user/$(id --user)/keyring/ssh
 
+nice="nice ionice"
+
 cgroup="/sys/fs/cgroup/user.slice/user-$(id --user).slice/user@$(id --user).service/app.slice/restly-${cmd}.service"
 if [ -f "$cgroup/cpu.uclamp.max" ]
 then
@@ -33,14 +35,33 @@ then
     #
     # TODO: Use CPU min MHz / CPU max MHz here to cause the CPU to run at lowest
     # possible freq?
-    echo -n "25" > "$cgroup/cpu.uclamp.max"
+    echo -n "10" > "$cgroup/cpu.uclamp.max"
+else
+    # Oh dirty hack, we pin ourself to a CPU, and then lower that CPU's freq.
+    # Like this we create ourself our own little core and can do the backup in
+    # the background without causing fan noise.
+    little_core=$(($RANDOM % $(nproc)))
+
+    set +e
+    reset_freq() {
+        max_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_core/cpufreq/cpuinfo_max_freq)
+        sudo --non-interactive cpupower -c $little_core frequency-set --max ${max_freq_khz}kHz
+    }
+
+    trap reset_freq EXIT
+
+    min_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_core/cpufreq/cpuinfo_min_freq)
+    sudo --non-interactive cpupower -c $little_core frequency-set --max ${min_freq_khz}kHz
+    set -e
+
+    nice="$nice taskset --cpu-list $little_core"
 fi
 
 if [ "$cmd" = backup ]
 then
-    nice ionice restly $@
+    $nice restly $@
 else
     gnome-session-inhibit --inhibit suspend \
-        nice ionice \
+        $nice \
         restly $@
 fi
