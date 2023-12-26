@@ -9,8 +9,14 @@ Features:
   - Automatically run backups and maintenance tasks from `crontab`
   - Keep 48 hourly, 14 daily, 8 weekly, 12 monthly, and 5 yearly backups
 - Only run backups when the internet connection is not metered and wall power is available
-- Limit CPU usage: Use only one thread and run with `(io)nice`
-- Inhibit Gnome suspend for infrequent, long-running maintenance operations
+- Run quietly in the background
+  - When possible use Linux kernel cgroup CPU utilization clamping to request an
+    energy-efficient core
+  - Otherwise, pin ourself to a random core and lower that core's frequency to
+    the minimum while we are running (tested on Lenovo ThinkPad X1 Carbon Gen 9
+    (20XXS0Y800) with good results)
+  - Use `ionice` and `nice`
+- Inhibit Gnome suspend for long-running cleanup operations
 - Can use encrypted SSH keys from the Gnome Keyring that are only unlocked at
   login to access the `restic` repository
 - Automatically remove stale, server-side restic locks and try to auto-repair
