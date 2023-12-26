@@ -257,7 +257,7 @@ Success, backup will be run automatically.
     set -x
 
     # Restic is written in Go, limit parallelism as we are a background process.
-    GOMAXPROCS=1
+    GOMAXPROCS=${GOMAXPROCS:-1}
     export GOMAXPROCS
 
     backup_exitcode=0

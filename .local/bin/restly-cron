@@ -29,32 +29,52 @@ nice="nice ionice"
 cgroup="/sys/fs/cgroup/user.slice/user-$(id --user).slice/user@$(id --user).service/app.slice/restly-${cmd}.service"
 if [ -f "$cgroup/cpu.uclamp.max" ]
 then
-    # Only request 25% of a big core's CPU cycles (whole core would be 1024).
-    # This allows the kernel to move us to a little core, or to run the big core
-    # at a low cpufreq.
+    # Only request a part of a big core's CPU cycles. This allows the kernel to
+    # move us to a little core, or to run the big core at a low cpufreq.
     #
-    # TODO: Use CPU min MHz / CPU max MHz here to cause the CPU to run at lowest
-    # possible freq?
-    echo -n "10" > "$cgroup/cpu.uclamp.max"
+    # TODO: Use CPU base MHz / CPU max MHz here to cause the CPU to run at base
+    # freq? Also, actually test this on a machine where it has an effect on the
+    # fan.
+    echo -n "25" > "$cgroup/cpu.uclamp.max"
 else
+    # This has been tested and optimized for a Lenovo ThinkPad X1 Carbon Gen 9
+    # (20XXS0Y800) with an 8-thread 11th Gen Intel(R) Core(TM) i7-1185G7 @
+    # 3.00GHz with Ubuntu 22.04.
+
     # Oh dirty hack, we pin ourself to a CPU, and then lower that CPU's freq.
     # Like this we create ourself our own little core and can do the backup in
     # the background without causing fan noise.
-    little_core=$(($RANDOM % $(nproc)))
+    little_cpu=$(($RANDOM % $(nproc)))
+    little_core_cpus=$little_cpu
+    export GOMAXPROCS=1
+
+    # When on SMP, also use the silbling because it will be affected by the low
+    # freq anyway and therefore will not be able to do much for the rest of the
+    # system.
+    if [ -f /sys/devices/system/cpu/cpu$little_cpu/topology/core_cpus_list ]
+    then
+        little_core_cpus=$(cat /sys/devices/system/cpu/cpu$little_cpu/topology/core_cpus_list)
+        export GOMAXPROCS=2
+    fi
 
     set +e
     reset_freq() {
-        max_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_core/cpufreq/cpuinfo_max_freq)
-        sudo --non-interactive cpupower -c $little_core frequency-set --max ${max_freq_khz}kHz
+        max_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/cpuinfo_max_freq)
+        sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${max_freq_khz}kHz
     }
 
     trap reset_freq EXIT
 
-    min_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_core/cpufreq/cpuinfo_min_freq)
-    sudo --non-interactive cpupower -c $little_core frequency-set --max ${min_freq_khz}kHz
+    # On my ThinkPad X1 Carbon Gen 9, the base freq still causes 65DegC @ 120PWM
+    # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9
+    #
+    freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/base_frequency)
+    #
+    # freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/cpuinfo_min_freq)
+    sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${freq_khz}kHz
     set -e
 
-    nice="$nice taskset --cpu-list $little_core"
+    nice="$nice taskset --cpu-list $little_core_cpus"
 fi
 
 if [ "$cmd" = backup ]
