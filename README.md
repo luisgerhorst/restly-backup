@@ -69,7 +69,7 @@ restly default cmd snapshots
 ```
 
 Config files:
-- systemd/crontab: Invokes `restly-cron`
+- systemd: Invokes `restly-cron`
 - `~/.authinfo.d/restly_$REPO_password`
 - `~/.config/restly/$REPO.sh`
   - Backup destination and encryption password
