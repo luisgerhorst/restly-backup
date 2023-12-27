@@ -4,7 +4,7 @@ Integrate `restic` with Gnome for automatic backups in the background.
 
 Features:
 - With the default config (set up using `configure-root`):
-  - Back up the root filesystem mounted at `/`
+  - Back up the filesystems mounted at `/` and `/home`
   - Skip most caches, temporary files, and the Trash
   - Automatically run backups and maintenance tasks from `crontab`
   - Keep 48 hourly, 14 daily, 8 weekly, 12 monthly, and 5 yearly backups
