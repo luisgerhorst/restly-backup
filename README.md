@@ -53,32 +53,27 @@ restly help
 
 ## Setup
 
-Run `restly configure-root` to create a config that backs up you machine's root
+Run `restly configure` to create a config that backs up you machine's root
 filesystem (i.e., skipping external drives and temporary / caches files). It
 will prompt you for the backup destination (the restic repo) and encryption
-password. It enables the automatic backups (using systemd timers) to the
-`default` repo.
+password. It enables the automatic backups (using systemd timers for the
+`default` repo).
 
-For testing, kick off an initial backup manually and check the logs:
+For monitoring and testing the following might be helpful:
 
 ``` sh
 systemctl --user start restly-backup
-
-# Already done by configure-root
-systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
-systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
 systemctl --user list-timers
-
 journalctl --user -f -u restly-backup
+restly default cmd snapshots
 ```
 
 Config files:
 - systemd/crontab: Invokes `restly-cron`
 - `~/.authinfo.d/restly_$REPO_password`
-- `~/.config/restly/$REPO.conf`
+- `~/.config/restly/$REPO.sh`
   - Backup destination and encryption password
   - Can also specify additional options, e.g., retention policy by setting `RESTIC_FORGET`
     - See script for the default policy.
-- `~/.config/restly/$DIR/conf`
-- `~/.config/restly/$DIR/exclude`
-- `~/.config/restly/$DIR/exclude.$HOSTNAME`
+- `~/.config/restly/$DIR/conf.sh`
+- `~/.config/restly/$DIR/exclude.txt`

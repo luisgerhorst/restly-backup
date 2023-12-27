@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+shopt -s nullglob
 
 # Check the syntax.
 bash -n $(command -v "$0")
@@ -16,21 +17,26 @@ fi
 config="${HOME}/.config/restly"
 
 # For configure-root, this may not exist yet.
-server_conf="${config}/${repo}.conf"
+server_conf="${config}/${repo}.sh"
 if [ -e "${server_conf}" ]
 then
     . "${server_conf}"
 fi
 
+# Restic is written in Go, limit parallelism as we are a background process.
+GOMAXPROCS=${GOMAXPROCS:-1}
+export GOMAXPROCS
+
 if [ "$cmd" = "help" ] || [ "$cmd" = "--help"  ] || [ "$cmd" = "-h"  ]
 then
     echo "Usage: $0 [REPO] COMMAND
 
-REPO is the name of a configured restic repository.
-When unspecified, has the value 'default'.
+REPO is the name of a configured restic repository. When unspecified and only
+one argument is passed to restly, it has the value 'default'.
 
 Possible values for COMMAND:
-  configure-root: Set up automatic backups for the root directory
+  configure: Configure a backup destination (restic repo and password)
+  enable: Enable automatic backups for the 'default' destination
   backup: Store a copy of every configured directory to the chosen
           restic repository
   mount: Browse the backup
@@ -47,6 +53,93 @@ chosen REPO for each."
     exit 0
 fi
 
+if [ "${cmd}" = "configure" ]
+then
+    set +x
+
+    echo "This creates a basic config to frequently backup your root filesystem
+to the '${repo}' restic repository (e.g, a server). It will first check there
+does not exist such a config yet and then create the config files. You can skip
+the checks by setting RESTLY_FORCE=1 which may cause files and repo passwords to
+be lost."
+
+    # TODO: Store this in an encrypted password store unlocked at login only.
+    RESTIC_PASSWORD_FILE="${HOME}/.authinfo.d/restly_${repo}_password"
+
+    if [ -e "${server_conf}" ] && [ $RESTLY_FORCE != 1 ]
+    then
+
+        echo "Error: ${server_conf} already exists, change the name to something
+other than $repo by running '$0 OTHER_NAME configure-root' or remove the
+existing configuration file." 1>&2
+
+        exit 1
+    fi
+
+    if [ -e "${RESTIC_PASSWORD_FILE}" ] && [ $RESTLY_FORCE != 1 ]
+    then
+
+        echo "Error: ${RESTIC_PASSWORD_FILE} already exists, remove it or change
+the server name." 1>&2
+
+        exit 1
+    fi
+
+    echo -n "Please enter the restic repository to backup to, e.g.,
+'sftp:$USER@example.com:/path/to/backup/restic': "
+
+    read RESTIC_REPOSITORY
+
+    echo -n "Please enter a password to encrypt the backup with (e.g.,
+$(openssl rand -base64 16)), also store this outside of this computer: "
+
+    read RESTIC_PASSWORD
+
+    mkdir -p "$(dirname $RESTIC_PASSWORD_FILE)"
+    chmod 700 "$(dirname $RESTIC_PASSWORD_FILE)"
+    echo "$RESTIC_PASSWORD" > "${RESTIC_PASSWORD_FILE}"
+    chmod 600 "${RESTIC_PASSWORD_FILE}"
+
+    echo "# Created by '$0 $@' at $(date --iso).
+export RESTIC_REPOSITORY=\"$RESTIC_REPOSITORY\"
+export RESTIC_PASSWORD_FILE=\"$RESTIC_PASSWORD_FILE\"" \
+    > ${server_conf}
+
+    # Fall through to enable.
+    if [ "$repo" != "default" ]
+    then
+
+        echo "Warning: Automatic backups are only supported by restly for the
+'default' repo. Not enabling the systemd timers."
+
+        exit 0
+    fi
+fi
+
+if [ "${cmd}" = "enable" ] || [ "${cmd}" = "configure" ]
+then
+    systemctl --user daemon-reload
+    systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
+    systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
+
+    systemctl --user start restly-backup
+    systemctl --user status restly-backup.service
+    systemctl --user list-timers
+
+    echo "Success, automatic backups to the default repo enabled."
+    exit 0
+fi
+
+# The following can also be run in systemd.
+
+set -x
+
+RM="rm -rfd"
+if command -v trash
+then
+    RM=trash
+fi
+
 # TODO: Use a lock file that is created atomicly if it does not exist yet and
 # only run the following if we get the lock.
 #
@@ -58,7 +151,10 @@ then
 else
     run_user=${HOME}/.var/run
 fi
-pid_file=${run_user}/restly-${repo}.pid
+pid_file="${run_user}/restly-${repo}.pid"
+
+# Like this it automatically shows up in the Nautilus sidebar.
+mountpoint="$HOME/restly-${repo}"
 
 mkdir -p $(dirname ${pid_file})
 if [ -e "${pid_file}" ]
@@ -69,7 +165,7 @@ then
     # the script failed to clean up after itself.
     if kill -0 "${pid}"
     then
-        echo "Warning: Another instance of restly with the repo is likely already running on this system.
+        echo "Warning: Another instance of restly with the repo is already running on this system.
 If you are sure this not the case, delete ${pid_file}." >&2
         # Exit with 1 to cause systemd to restart check/prune when they could
         # not run because of a running pending backup.
@@ -78,219 +174,91 @@ If you are sure this not the case, delete ${pid_file}." >&2
 
     # The process is no longer running, it was likely terminated abruptly and
     # failed to unlock the repo. Therefore do that now.
-    if [ "${cmd}" != "configure-root" ]
-    then
-        restic unlock
-    fi
+    restic unlock
 fi
-# Race condition.
+
 echo $$ > "${pid_file}"
 
-mkdir -p ~/.var/log/restly
-set +e
-{
-    set -euo pipefail
+cleanup() {
+    set +e
 
-    if [ "${cmd}" = "cmd" ]
+    pid=$(cat "${pid_file}")
+    if [ $pid == $$ ]
     then
-        restic ${@:3}
-        rm "${pid_file}"
-        exit $?
-    fi
-
-    if [ "${cmd}" = "configure-root" ]
-    then
-        set +x
-        echo "
-This creates a basic config to frequently backup your root filesystem to the '${repo}' restic repository (e.g, a server).
-It will first check there does not exist such a config yet and then create the config files.
-You can skip the checks by setting RESTLY_FORCE=1 which may cause files and repo passwords to be lost.
-"
-
-        dir_name=${RESTLY_CONFIGURE_DIR:-root}
-        conf_dir="${config}/${dir_name}"
-
-        # TODO: Store this in an encrypted password store unlocked at login only.
-        RESTIC_PASSWORD_FILE="${HOME}/.authinfo.d/restly_${repo}_password"
-
-        if [ -e "${conf_dir}" ] && [ $RESTLY_FORCE != 1 ]
-        then
-            echo "Error: ${conf_dir} already exists,
-set the environment variable RESTLY_CONFIGURE_DIR != root
-or remove the existing configuration directory." 1>&2
-            exit 1
-        fi
-
-        if [ -e "${server_conf}" ] && [ $RESTLY_FORCE != 1 ]
-        then
-            echo "Error: ${server_conf} already exists,
-change the name to something other than $repo by running
-  $0 OTHER_NAME configure-root
-or remove the existing configuration file." 1>&2
-            exit 1
-        fi
-
-        if [ -e "${RESTIC_PASSWORD_FILE}" ] && [ $RESTLY_FORCE != 1 ]
-        then
-            echo "Error: ${RESTIC_PASSWORD_FILE} already exists,
-remove it or change the server name." 1>&2
-            exit 1
-        fi
-
-        echo -n "
-Please enter the restic repository to backup to,
-e.g., 'sftp:$USER@example.com:/path/to/backup/restic': "
-        read RESTIC_REPOSITORY
-        echo -n "
-Please enter a password to encrypt the backups with
-(random suggestion: $(openssl rand -base64 16)),
-also store this outside of this computer: "
-        read RESTIC_PASSWORD
-
-        set -x
-
-        mkdir -p "$(dirname $RESTIC_PASSWORD_FILE)"
-        chmod 700 "$(dirname $RESTIC_PASSWORD_FILE)"
-        echo "$RESTIC_PASSWORD" > "${RESTIC_PASSWORD_FILE}"
-        chmod 600 "${RESTIC_PASSWORD_FILE}"
-
-        mkdir -p "${conf_dir}"
-
-        echo "# Created by '$0 $@' at $(date --iso).
-export RESTIC_REPOSITORY=\"$RESTIC_REPOSITORY\"
-export RESTIC_PASSWORD_FILE=\"$RESTIC_PASSWORD_FILE\"" \
-    > ${server_conf}
-
-        # Put a list of patterns to exclude into $DIR/exclude (and host-specific
-        # rules into $DIR/exclude.hostname)
-        echo '/var/backups/*
-/var/cache/*
-/var/log/*
-/var/tmp/*
-/var/lib/apt/lists
-/var/log/journal
-/tmp/*
-
-/home/*/.Trash
-/home/*/.var/backups
-/home/*/.var/cache
-/home/*/.var/log
-/home/*/.var/run
-/home/*/.cache
-/home/*/.dropbox
-/home/*/.local/share/Trash
-/home/*/snap/*/*/appdata/GPUCache
-/home/*/.*.cache
-/home/*/.*/cache
-/home/*/.*/caches
-/home/*/.*/.*-cache
-/home/*/.*/logs
-/home/*/*/Caches
-/home/*/*/*.cache
-
-/home/*/.*_history
-/home/*/.local/share/gnome-shell
-/home/*/.config/google-chrome
-
-/home/**/.emacs.d/.local/cache
-/home/**/.ccache
-/home/**/poky/build/cache
-/home/**/poky/build/downloads
-/home/**/poky/build/*-cache
-/home/**/poky/build/tmp
-/home/**/linux/**/*.o
-/home/**/linux/**/.*.o.d
-/home/**/linux/**/.*.o.cmd' > ${conf_dir}/exclude
-
-        # Path to back up.
-        echo 'RESTLY_DIR="/ /home"' > ${conf_dir}/conf
-
-        echo "${conf_dir} was created by '$0 $@' at $(date --iso)." > ${conf_dir}/README.txt
-
-        systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
-        systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
-        systemctl list-timers --user --all
-
-        set -x
-        echo "
-Success, backup will be run automatically.
-"
-
-        rm "${pid_file}"
-        exit 0
-        set +x
+        rm -f "${pid_file}"
     fi
 
     if [ "${cmd}" = "mount" ]
     then
-        mkdir -p ~/Desktop/restly-${repo}
+        rm -fd "${mountpoint}"
+    fi
+}
+trap cleanup EXIT
+
+if [ "${cmd}" = "cmd" ]
+then
+    restic ${@:3}
+    exit 0
+fi
+
+if [ "${cmd}" = "mount" ]
+then
+    mkdir -p "$mountpoint"
+    restic mount "$mountpoint"
+    # Mountpoint will be removed by trap EXIT.
+    exit 0
+fi
+
+backup_exitcode=0
+
+if [ "${cmd}" = "backup" ]
+then
+    for conf in ${config}/*/conf.sh
+    do
+        . "${conf}"
+        conf_dir=$(dirname "${conf}")
         set +e
-        restic mount ~/Desktop/restly-${repo}
+        restic backup \
+            --one-file-system \
+            --exclude-caches \
+            --exclude-file "${conf_dir}/exclude.txt" \
+            ${RESTLY_DIRS}
+        exitcode=$?
         set -e
-        rm -d ~/Desktop/restly-${repo}
-        rm "${pid_file}"
-        exit 0
-    fi
+        # 3 is "Warning: at least one source file could not be read".
+        if [ "$exitcode" != 0 ] && [ "$exitcode" != 3 ]
+        then
+            backup_exitcode="$exitcode"
+        fi
+    done
+fi
 
-    set -x
-
-    # Restic is written in Go, limit parallelism as we are a background process.
-    GOMAXPROCS=${GOMAXPROCS:-1}
-    export GOMAXPROCS
-
-    backup_exitcode=0
-    if [ "${cmd}" = "backup" ] || [ "${cmd}" = "prune" ] || [ "${cmd}" = "check" ]
-    then
-        for conf in ${config}/*/conf
-        do
-            source "${conf}"
-            conf_dir=$(dirname "${conf}")
-            set +e
-            touch -a "${conf_dir}/exclude.$(hostname -s)"
-            restic backup \
-                --one-file-system \
-                --exclude-caches \
-                --exclude-file "${conf_dir}/exclude" \
-                --exclude-file "${conf_dir}/exclude.$(hostname -s)" \
-                ${RESTLY_DIR}
-            exitcode=$?
-            set -e
-            # 3 is "Warning: at least one source file could not be read".
-            if [ "$exitcode" != 0 ] && [ "$exitcode" != 3 ]
-            then
-                backup_exitcode="$exitcode"
-            fi
-        done
-    fi
-
-    if [ "${cmd}" = "repair" ] || [ $backup_exitcode != 0 ]
-    then
-        # https://forum.restic.net/t/fatal-load-index-xxxxxxxxx-invalid-data-returned/3596/18
-        trash ~/.cache/restic
-        restic rebuild-index --read-all-packs
-    fi
-
-    if [ "${cmd}" = "prune" ]
-    then
-        # Disable grouping by host and path to also prune backups from old
-        # hosts/paths after some time. This assumes you use one repo per host.
-        export RESTLY_FORGET=${RESTLY_FORGET:-"--group-by '' --keep-hourly 48 --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --keep-yearly 5"}
-        restic forget ${RESTLY_FORGET}
-        restic prune --verbose --max-repack-size 1M
-        restic prune --verbose --max-repack-size 5G
-        restic prune --verbose --repack-cacheable-only
-        restic prune --verbose --max-unused unlimited # only duplicates and tree packs will be repacked
-        restic prune --verbose
-    fi
-
-    if [ "${cmd}" = "check" ]
-    then
-        restic check
-        restic check --read-data-subset=5%
-    fi
-
-    rm "${pid_file}"
-
+if [ "${cmd}" = "repair" ] || [ $backup_exitcode != 0 ]
+then
+    # https://forum.restic.net/t/fatal-load-index-xxxxxxxxx-invalid-data-returned/3596/18
+    $RM ~/.cache/restic
+    # TODO: Switch to 'repair index'
+    restic rebuild-index --read-all-packs
     exit $backup_exitcode
-} 2>&1 | tee ~/.var/log/restly/${repo}-${cmd}.log
-set -e
+fi
+
+if [ "${cmd}" = "prune" ]
+then
+    # Disable grouping by host and path to also prune backups from old
+    # hosts/paths after some time. This assumes you use one repo per host.
+    export RESTLY_FORGET=${RESTLY_FORGET:-"--group-by '' --keep-hourly 48 --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --keep-yearly 5"}
+    restic forget ${RESTLY_FORGET}
+    restic prune --verbose --max-repack-size 1M
+    restic prune --verbose --max-repack-size 5G
+    restic prune --verbose --repack-cacheable-only
+    restic prune --verbose --max-unused unlimited # only duplicates and tree packs will be repacked
+    restic prune --verbose
+fi
+
+if [ "${cmd}" = "check" ]
+then
+    restic check
+    restic check --read-data-subset=5%
+fi
+
+exit $backup_exitcode
