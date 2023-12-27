@@ -33,9 +33,12 @@ then
     # Only request a part of a big core's CPU cycles. This allows the kernel to
     # move us to a little core, or to run the big core at a low cpufreq.
     #
+    # Tested on AMD Ryzen 7 3800X 8-Core Processor with Fedora 39. cpufreq.bt
+    # confirmed that restly ran at 2.2GHz with uclamp.max=25 and 3.8GHz with
+    # uclamp.max=100.
+    #
     # TODO: Use CPU base MHz / CPU max MHz here to cause the CPU to run at base
-    # freq? Also, actually test this on a machine where it has an effect on the
-    # fan.
+    # freq?
     echo -n "25" > "$cgroup/cpu.uclamp.max"
 else
     # This has been tested and optimized for a Lenovo ThinkPad X1 Carbon Gen 9
