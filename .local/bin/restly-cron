@@ -62,9 +62,8 @@ else
     set +e
     # On my ThinkPad X1 Carbon Gen 9, the base freq still causes 65DegC @ 120PWM
     # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9
-    # new_freq_khz=$(cat $cpu/cpufreq/cpuinfo_min_freq)
     old_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
-    our_freq_khz=$(cat $cpu/cpufreq/base_frequency)
+    our_freq_khz=$(cat $cpu/cpufreq/cpuinfo_min_freq)
     reset_freq() {
         cur_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
         # Only reset it, if it has not changed.
