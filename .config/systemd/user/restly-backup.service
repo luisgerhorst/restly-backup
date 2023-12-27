@@ -1,11 +1,16 @@
 [Unit]
 After=network.target
+AssertACPower=true
 
 [Service]
 Type=simple
+ExecStart=/bin/bash -c '$$HOME/.local/bin/restly-cron default backup'
+Restart=on-failure
+RestartSec=5min
+Nice=18
+IOSchedulingPriority=6
 # Was not able to test this on a system where it has an effect:
 # CPUQuota=10%
-ExecStart=/bin/bash -c '$$HOME/.local/bin/restly-cron default backup'
 
 [Install]
 WantedBy=multi-user.target

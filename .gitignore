@@ -1,1 +1,1 @@
-/.config/systemd/user/multi-user.target.wants/
+/.config/systemd/user/timers.target.wants/

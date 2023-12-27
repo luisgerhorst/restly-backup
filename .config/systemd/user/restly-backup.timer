@@ -1,9 +1,17 @@
 [Unit]
-Description=Runs restly backup one hour after last run finished
+Description=Runs restly backup once every hour at a random time within that hour, make up up missed runs
 
 [Timer]
-OnUnitInactiveSec=60min
+# Note that if a calendar timer elapsed more than once while the system was continuously sleeping the timer will only result in a single service activation.
+OnCalendar=hourly
+# Each timer unit will determine this delay randomly before each iteration, and the delay will simply be added on top of the next determined elapsing time.
+RandomizedDelaySec=1h
+# When enabled, the randomized offset specified by RandomizedDelaySec= is reused for all firings of the same timer. For a given timer unit, the offset depends on the machine ID, user identifier and timer name, which means that it is stable between restarts of the manager. This effectively creates a fixed offset for an individual timer, reducing the jitter in firings of this timer, while still avoiding firing at the same time as other similarly configured timers.
+FixedRandomDelay=true
+# If true, the time when the service unit was last triggered is stored on disk. When the timer is activated, the service unit is triggered immediately if it would have been triggered at least once during the time when the timer was inactive.
+Persistent=true
+# Note that in case the unit to activate is already active at the time the timer elapses it is not restarted, but simply left running.
 Unit=restly-backup.service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target

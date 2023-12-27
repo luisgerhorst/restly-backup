@@ -1,10 +1,11 @@
 [Unit]
-Description=Runs restly check every week, making up for missed runs
+Description=Runs restly check on a random day each week, making up for missed runs
 
 [Timer]
-OnCalendar=Thu *-*-* 00:00:00
+OnCalendar=weekly
+RandomizedDelaySec=7d
 Persistent=true
 Unit=restly-check.service
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timers.target

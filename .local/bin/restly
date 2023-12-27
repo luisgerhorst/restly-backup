@@ -71,7 +71,9 @@ then
     then
         echo "Warning: Another instance of restly with the repo is likely already running on this system.
 If you are sure this not the case, delete ${pid_file}." >&2
-        exit 0
+        # Exit with 1 to cause systemd to restart check/prune when they could
+        # not run because of a running pending backup.
+        exit 1
     fi
 
     # The process is no longer running, it was likely terminated abruptly and
@@ -88,7 +90,6 @@ mkdir -p ~/.var/log/restly
 set +e
 {
     set -euo pipefail
-    env
 
     if [ "${cmd}" = "cmd" ]
     then
@@ -202,45 +203,22 @@ export RESTIC_PASSWORD_FILE=\"$RESTIC_PASSWORD_FILE\"" \
 /home/**/linux/**/.*.o.cmd' > ${conf_dir}/exclude
 
         # Path to back up.
-        echo 'RESTLY_DIR=/' > ${conf_dir}/conf
+        echo 'RESTLY_DIR="/ /home"' > ${conf_dir}/conf
 
         echo "${conf_dir} was created by '$0 $@' at $(date --iso)." > ${conf_dir}/README.txt
 
-        if [ "$RESTLY_CRONTAB" == "1" ]
-        then
-            # Legacy.
+        systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
+        systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
+        systemctl list-timers --user --all
 
-            crontab="$(mktemp)"
-            crontab -l > "$crontab"
-
-            if grep "# restly-id: $repo" "$crontab" && [ $RESTLY_FORCE != 1 ]
-            then
-                echo "Error: crontab already has jobs for $repo (found restly-id line),
-remove them with 'crontab -e'." 1>&2
-                exit 1
-            fi
-
-            echo "
-# Automatically added $(date --iso) by '$0 $@'
-# restly-id: $repo
-USER=$USER
-PATH=$PATH
-5 12 * * */4 restly-cron $repo check
-10 15 * * */2 restly-cron $repo prune
-15 */2 * * * restly-cron $repo backup" \
-    >> "$crontab"
-            crontab "$crontab"
-            rm -f "$crontab"
-        else
-            systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
-        fi
-
+        set -x
         echo "
 Success, backup will be run automatically.
 "
 
         rm "${pid_file}"
         exit 0
+        set +x
     fi
 
     if [ "${cmd}" = "mount" ]
@@ -274,7 +252,7 @@ Success, backup will be run automatically.
                 --exclude-caches \
                 --exclude-file "${conf_dir}/exclude" \
                 --exclude-file "${conf_dir}/exclude.$(hostname -s)" \
-                "${RESTLY_DIR}"
+                ${RESTLY_DIR}
             exitcode=$?
             set -e
             # 3 is "Warning: at least one source file could not be read".
