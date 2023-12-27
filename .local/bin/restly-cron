@@ -20,13 +20,16 @@ fi
 
 nice=""
 
-# Uclamp is a hinting mechanism that allows the scheduler to understand the
-# performance requirements and restrictions of the tasks, thus it helps the
-# scheduler to make a better decision. And when schedutil cpufreq governor is
-# used, util clamp will influence the CPU frequency selection as well.
+# To test whether this has the desired effect, use
+# https://github.com/brendangregg/bpf-perf-tools-book/blob/master/originals/Ch06_CPUs/cpufreq.bt
 cgroup="/sys/fs/cgroup/user.slice/user-$(id --user).slice/user@$(id --user).service/app.slice/restly-${cmd}.service"
 if [ -f "$cgroup/cpu.uclamp.max" ] && [ $(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor) == "schedutil" ]
 then
+    # Uclamp is a hinting mechanism that allows the scheduler to understand the
+    # performance requirements and restrictions of the tasks, thus it helps the
+    # scheduler to make a better decision. And when schedutil cpufreq governor is
+    # used, util clamp will influence the CPU frequency selection as well.
+    #
     # Only request a part of a big core's CPU cycles. This allows the kernel to
     # move us to a little core, or to run the big core at a low cpufreq.
     #
@@ -43,33 +46,35 @@ else
     # Like this we create ourself our own little core and can do the backup in
     # the background without causing fan noise.
     little_cpu=$(($RANDOM % $(nproc)))
+    cpu=/sys/devices/system/cpu/cpu$little_cpu
     little_core_cpus=$little_cpu
     export GOMAXPROCS=1
 
     # When on SMP, also use the silbling because it will be affected by the low
     # freq anyway and therefore will not be able to do much for the rest of the
     # system.
-    if [ -f /sys/devices/system/cpu/cpu$little_cpu/topology/core_cpus_list ]
+    if [ -f $cpu/topology/core_cpus_list ]
     then
-        little_core_cpus=$(cat /sys/devices/system/cpu/cpu$little_cpu/topology/core_cpus_list)
+        little_core_cpus=$(cat $cpu/topology/core_cpus_list)
         export GOMAXPROCS=2
     fi
 
     set +e
-    max_freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/scaling_max_freq)
-    reset_freq() {
-        sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${max_freq_khz}kHz
-    }
-
-    trap reset_freq EXIT
-
     # On my ThinkPad X1 Carbon Gen 9, the base freq still causes 65DegC @ 120PWM
     # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9
-    #
-    freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/base_frequency)
-    #
-    # freq_khz=$(cat /sys/devices/system/cpu/cpu$little_cpu/cpufreq/cpuinfo_min_freq)
-    sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${freq_khz}kHz
+    # new_freq_khz=$(cat $cpu/cpufreq/cpuinfo_min_freq)
+    old_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
+    our_freq_khz=$(cat $cpu/cpufreq/base_frequency)
+    reset_freq() {
+        cur_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
+        # Only reset it, if it has not changed.
+        if [ "$our_freq_khz" == "$cur_freq_khz" ]
+        then
+            sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${old_freq_khz}kHz
+        fi
+    }
+    trap reset_freq EXIT
+    sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${our_freq_khz}kHz
     set -e
 
     nice="$nice taskset --cpu-list $little_core_cpus"
