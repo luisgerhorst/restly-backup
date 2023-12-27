@@ -42,7 +42,6 @@ git clone git@github.com:luisgerhorst/restly-backup.git
 stow --target=$HOME \
   --ignore=.git --ignore=.gitignore --ignore=LICENSE --ignore=README.md \
   restly-backup
-systemctl --user daemon-reload
 
 # For quiet backups without kernel uclamp support:
 echo "$USER	ALL=(ALL:ALL) NOPASSWD: /usr/bin/cpupower" | sudo tee /etc/sudoers.d/$USER-cpupower-for-restly
@@ -63,8 +62,9 @@ For monitoring and testing the following might be helpful:
 
 ``` sh
 systemctl --user start restly-backup
-systemctl --user list-timers
+systemctl --user status restly-backup
 journalctl --user -f -u restly-backup
+systemctl --user list-timers
 restly default cmd snapshots
 ```
 

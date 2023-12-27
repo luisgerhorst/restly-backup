@@ -119,14 +119,17 @@ fi
 if [ "${cmd}" = "enable" ] || [ "${cmd}" = "configure" ]
 then
     systemctl --user daemon-reload
+
     systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
     systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
 
     systemctl --user start restly-backup
-    systemctl --user status restly-backup.service
-    systemctl --user list-timers
 
-    echo "Success, automatic backups to the default repo enabled."
+    echo "Success, automatic backups to the default repo enabled and intial
+backup kicked off. Watch it using
+
+journalctl --user -f -u restly-backup"
+
     exit 0
 fi
 
