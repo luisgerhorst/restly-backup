@@ -63,7 +63,13 @@ For testing, kick off an initial backup manually and check the logs:
 
 ``` sh
 systemctl --user start restly-backup
-journalctl --user -u restly-backup
+
+# Already done by configure-root
+systemctl --user enable restly-backup.timer restly-prune.timer restly-check.timer
+systemctl --user start restly-backup.timer restly-prune.timer restly-check.timer
+systemctl --user list-timers
+
+journalctl --user -f -u restly-backup
 ```
 
 Config files:
