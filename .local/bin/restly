@@ -249,7 +249,7 @@ if [ "${cmd}" = "prune" ]
 then
     # Disable grouping by host and path to also prune backups from old
     # hosts/paths after some time. This assumes you use one repo per host.
-    export RESTLY_FORGET=${RESTLY_FORGET:-"--group-by '' --keep-hourly 48 --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --keep-yearly 5"}
+    export RESTLY_FORGET=${RESTLY_FORGET:-"--group-by tags --keep-hourly 48 --keep-daily 14 --keep-weekly 8 --keep-monthly 12 --keep-yearly 5"}
     restic forget ${RESTLY_FORGET}
     restic prune --verbose --max-repack-size 1M
     restic prune --verbose --max-repack-size 5G
