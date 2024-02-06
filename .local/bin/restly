@@ -228,7 +228,9 @@ then
             ${RESTLY_DIRS}
         exitcode=$?
         set -e
-        # 3 is "Warning: at least one source file could not be read".
+        # Exit status is 3 if some source data could not be read (incomplete
+        # snapshot created). "Warning: at least one source file could not be
+        # read".
         if [ "$exitcode" != 0 ] && [ "$exitcode" != 3 ]
         then
             backup_exitcode="$exitcode"
