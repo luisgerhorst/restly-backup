@@ -43,7 +43,7 @@ then
 else
     # This has been tested and optimized for a Lenovo ThinkPad X1 Carbon Gen 9
     # (20XXS0Y800) with an 8-thread 11th Gen Intel(R) Core(TM) i7-1185G7 @
-    # 3.00GHz with Ubuntu 22.04.
+    # 3.00GHz with Ubuntu 22.04 / Fedora 39.
 
     # Oh dirty hack, we pin ourself to a CPU, and then lower that CPU's freq.
     # Like this we create ourself our own little core and can do the backup in
@@ -64,9 +64,10 @@ else
 
     set +e
     # On my ThinkPad X1 Carbon Gen 9, the base freq still causes 65DegC @ 120PWM
-    # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9
+    # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9 -
+    # still run at that freq. because it's likely the most energy efficient.
     old_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
-    our_freq_khz=$(cat $cpu/cpufreq/cpuinfo_min_freq)
+    our_freq_khz=$(cat $cpu/cpufreq/base_frequency)
     reset_freq() {
         cur_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
         # Only reset it, if it has not changed.
