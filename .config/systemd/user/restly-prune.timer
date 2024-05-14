@@ -9,4 +9,4 @@ Persistent=true
 Unit=restly-prune.service
 
 [Install]
-WantedBy=timers.target
+WantedBy=default.target

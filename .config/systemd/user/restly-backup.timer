@@ -17,4 +17,4 @@ Persistent=true
 Unit=restly-backup.service
 
 [Install]
-WantedBy=timers.target
+WantedBy=default.target

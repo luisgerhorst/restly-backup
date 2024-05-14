@@ -8,4 +8,4 @@ Persistent=true
 Unit=restly-check.service
 
 [Install]
-WantedBy=timers.target
+WantedBy=default.target
