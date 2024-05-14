@@ -221,7 +221,9 @@ then
         . "${conf}"
         conf_dir=$(dirname "${conf}")
         set +e
+        # --verbose to see modified files in log.
         restic backup \
+            --verbose \
             --one-file-system \
             --exclude-caches \
             --exclude-file "${conf_dir}/exclude.txt" \
