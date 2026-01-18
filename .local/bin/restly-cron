@@ -40,47 +40,6 @@ then
     # TODO: Use CPU base MHz / CPU max MHz here to cause the CPU to run at base
     # freq?
     echo -n "25" > "$cgroup/cpu.uclamp.max"
-else
-    # This has been tested and optimized for a Lenovo ThinkPad X1 Carbon Gen 9
-    # (20XXS0Y800) with an 8-thread 11th Gen Intel(R) Core(TM) i7-1185G7 @
-    # 3.00GHz with Ubuntu 22.04 / Fedora 39.
-
-    # Oh dirty hack, we pin ourself to a CPU, and then lower that CPU's freq.
-    # Like this we create ourself our own little core and can do the backup in
-    # the background without causing fan noise.
-    little_cpu=$(($RANDOM % $(nproc)))
-    cpu=/sys/devices/system/cpu/cpu$little_cpu
-    little_core_cpus=$little_cpu
-    export GOMAXPROCS=1
-
-    # When on SMP, also use the silbling because it will be affected by the low
-    # freq anyway and therefore will not be able to do much for the rest of the
-    # system.
-    if [ -f $cpu/topology/core_cpus_list ]
-    then
-        little_core_cpus=$(cat $cpu/topology/core_cpus_list)
-        export GOMAXPROCS=2
-    fi
-
-    set +e
-    # On my ThinkPad X1 Carbon Gen 9, the base freq still causes 65DegC @ 120PWM
-    # fan noise without https://github.com/luisgerhorst/fancontrol-tpx1c9 -
-    # still run at that freq. because it's likely the most energy efficient.
-    old_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
-    our_freq_khz=$(cat $cpu/cpufreq/base_frequency)
-    reset_freq() {
-        cur_freq_khz=$(cat $cpu/cpufreq/scaling_max_freq)
-        # Only reset it, if it has not changed.
-        if [ "$our_freq_khz" == "$cur_freq_khz" ]
-        then
-            sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${old_freq_khz}kHz
-        fi
-    }
-    trap reset_freq EXIT
-    sudo --non-interactive cpupower -c $little_core_cpus frequency-set --max ${our_freq_khz}kHz
-    set -e
-
-    nice="$nice taskset --cpu-list $little_core_cpus"
 fi
 
 if [ "$cmd" = backup ]

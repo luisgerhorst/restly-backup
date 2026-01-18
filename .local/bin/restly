@@ -242,6 +242,7 @@ fi
 
 if [ "${cmd}" = "repair" ] || [ $backup_exitcode != 0 ]
 then
+    restic unlock
     # https://forum.restic.net/t/fatal-load-index-xxxxxxxxx-invalid-data-returned/3596/18
     $RM ~/.cache/restic
     # TODO: Switch to 'repair index'
