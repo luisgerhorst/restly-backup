@@ -4,7 +4,7 @@ AssertACPower=true
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -c '$$HOME/.local/bin/restly-cron default prune'
+ExecStart=/bin/bash -c '$$HOME/.local/bin/restly-cron prune'
 Restart=on-failure
 RestartSec=120min
 Nice=18

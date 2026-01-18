@@ -2,7 +2,7 @@
 set -euo pipefail
 set -x
 
-cmd=$2
+cmd=$1
 
 bash -n $(command -v "$0")
 
@@ -42,11 +42,17 @@ then
     echo -n "25" > "$cgroup/cpu.uclamp.max"
 fi
 
-if [ "$cmd" = backup ]
-then
-    $nice restly $@
-else
-    gnome-session-inhibit --inhibit suspend \
-        $nice \
-        restly $@
-fi
+config="${HOME}/.config/restly"
+for server_conf in $(find "$HOME/.config/restly" -name '*.sh' | shuf)
+do
+    repo="$(basename "$server_conf" .sh)"
+
+    if [ "$cmd" = backup ]
+    then
+        $nice restly "$repo" $@
+    else
+        gnome-session-inhibit --inhibit suspend \
+            $nice \
+            restly "$repo" $@
+    fi
+done
