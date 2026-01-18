@@ -43,7 +43,7 @@ then
 fi
 
 config="${HOME}/.config/restly"
-for server_conf in $(find "$HOME/.config/restly" -name '*.sh' | shuf)
+for server_conf in $(find "$HOME/.config/restly/" -maxdepth 1 -name '*.sh' | shuf)
 do
     repo="$(basename "$server_conf" .sh)"
 
