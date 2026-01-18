@@ -6,7 +6,7 @@ Features:
 - With the default config (set up using `configure-root`):
   - Back up the filesystems mounted at `/` and `/home`
   - Skip most caches, temporary files, and the Trash
-  - Automatically run backups and maintenance tasks from `crontab`
+  - Automatically run backups and maintenance tasks
   - Keep 48 hourly, 14 daily, 8 weekly, 12 monthly, and 5 yearly backups
 - Only run backups when the internet connection is not metered and wall power is available
 - Run quietly in the background
